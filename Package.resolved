@@ -1,0 +1,43 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "GRDB",
+        "repositoryURL": "https://github.com/groue/GRDB.swift.git",
+        "state": {
+          "branch": null,
+          "revision": "5ee47c3c2765bdfde0f44c2ea9a263f6aa252d63",
+          "version": "4.14.0"
+        }
+      },
+      {
+        "package": "HexString",
+        "repositoryURL": "https://gitlab.com/katalysis/open-source/HexString.git",
+        "state": {
+          "branch": null,
+          "revision": "61718ed9c1902a76744ffc84b432e8e8e0788ab2",
+          "version": "0.4.0"
+        }
+      },
+      {
+        "package": "swift-crypto",
+        "repositoryURL": "https://github.com/apple/swift-crypto",
+        "state": {
+          "branch": null,
+          "revision": "d67ac68d09a95443303e9d6e37b34e7ba101d5f1",
+          "version": "1.0.1"
+        }
+      },
+      {
+        "package": "SwiftMint",
+        "repositoryURL": "https://github.com/cosmosswift/swift-mint.git",
+        "state": {
+          "branch": null,
+          "revision": "4f72ba177f0c545e4b2e2e3b75bce18601bb46b9",
+          "version": "0.3.0"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
