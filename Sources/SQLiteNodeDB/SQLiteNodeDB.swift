@@ -16,7 +16,7 @@
 
 import Foundation
 import GRDB
-import iAVLPlus
+import iAVLPlusCore
 
 private extension DataProtocol {
     var hex: String {

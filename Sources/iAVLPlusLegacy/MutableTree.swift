@@ -2,7 +2,7 @@
 //
 //  This source file is part of the CosmosSwift open source project.
 //
-//  MutableTree.swift last updated 02/06/2020
+//  MutableTree.swift last updated 03/06/2020
 //
 //  Copyright © 2020 Katalysis B.V. and the CosmosSwift project authors.
 //  Licensed under Apache License v2.0
@@ -15,273 +15,96 @@
 // ===----------------------------------------------------------------------===
 
 import Foundation
+import iAVLPlusCore
 
+/// The `MutableTree` implementation aims to mimic the equivalent Go `MutableTree`.
+/// However, the design we implement ere is such that we have encapsulated the storage and access
+/// to the nodes into the `NodeStorageProtocol`. Therefore, any loading, saving, deleting, managing of
+/// cache, memory and such is expected to be handled and delegated to the storage implementation itself.
+/// We are providing this struct because as part of the design process, it was implemented before eventually
+/// being carved out in favour of the `NodeStorageProtocol` and the `NodeProtocol`. As it may be
+/// useful as part of the coming development of future CosmosSwift milestones, we keep it as suc for now, albeit
+/// as part of the Legacy module.
 public struct MutableTree<Storage: NodeStorageProtocol>: CustomStringConvertible {
     public typealias Hash = Storage.Hasher.Hash
     public typealias Key = Storage.Key
     public typealias Value = Storage.Value
     public typealias Hasher = Storage.Hasher
 
-    enum ImmutableTree1 {
-        case empty(version: Int64)
-        case tree(root: Storage.Node, version: Int64)
-    }
-
     public var current: (root: Storage.Node, version: Int64)
     public var lastSaved: (root: Storage.Node, version: Int64)
-    // public var orphans: [Hash: Int64] = [:]
-    public var versions: [Int64: Bool] = [:]
-    public var version: Int64 = 0 // TODO: is this not the last saved version? it might differ when there is an in mem cache backed by disk
+
+    public var versions: [Int64] {
+        ndb.versions.sorted()
+    }
+
+    public var version: Int64 {
+        ndb.version
+    }
+
     public var ndb: Storage
 
-    public init(_ db: inout Storage, _ version: Int64) throws {
+    /// We implement here a simple initializer taking a storage instance. The specific
+    /// strategies around caching, pruning, managing memory and speed of access are
+    /// intended to be implemented by the type of storage provided dependin on the specific
+    /// use case.
+    public init(_ db: inout Storage) throws {
         ndb = db
-        if let root = try? db.root(at: version) {
-            current = (root, version)
-            lastSaved = (root, version)
-            self.version = version
+        current = (ndb.root, ndb.version)
+        if ndb.version > 2 {
+            lastSaved = (try ndb.root(at: ndb.version - 1)!, ndb.version - 1)
         } else {
-            throw IAVLErrors.generic(identifier: "MutableTree().init()", reason: "invalid version")
+            lastSaved = (ndb.makeEmpty(), 0)
         }
     }
 
-    // NewMutableTree returns a new tree with the specified cache size and datastore
-    // To maintain backwards compatibility, this function will initialize PruningStrategy{keepEvery: 1, keepRecent: 0}
-//    public init(_ db: DB, _ cacheSize: Int) {
-//        // TODO: implement
-//        self.init(DB.Node(key: Key(), value: Value(), version: 0))
-//
-    ////        // memDB is initialized but should never be written to
-    ////        memDB := dbm.NewMemDB()
-    ////        return NewMutableTreeWithOpts(db, memDB, cacheSize, nil)
-//    }
-
-//    // NewMutableTreeWithOpts returns a new tree with the specified cache size, datastores and options
-//    public init(_ snapshotDB: DB, _ recentDB: DB, _ cacheSize: Int, _ options: [String:String]) {
-//        // TODO: implement
-//        self.init(DB.Node(key: Key(), value: Value(), version: 0))
-//
-    ////        if err := validateOptions(opts); err != nil {
-    ////            return nil, err
-    ////        }
-    ////
-    ////        ndb := newNodeDB(snapDB, recentDB, cacheSize, opts)
-    ////        head := &ImmutableTree{ndb: ndb}
-    ////
-    ////        return &MutableTree{
-    ////            ImmutableTree: head,
-    ////            lastSaved:     head.clone(),
-    ////            orphans:       map[string]int64{},
-    ////            versions:      map[int64]bool{},
-    ////            ndb:           ndb,
-    ////        }, nil
-//
-//    }
-
-    // IsEmpty returns whether or not the tree has any keys. Only trees that are
-    // not empty can be saved.
+    /// `isEmpty` returns whether or not the tree has any keys.
     public var isEmpty: Bool {
         current.root.size == 0
     }
 
-    // VersionExists returns whether or not a version exists.
+    /// `versionExists` returns whether or not a version exists.
     public func versionExists(_ version: Int64) -> Bool {
-        return versions[version] ?? false
+        return versions.contains(version)
     }
 
-    // AvailableVersions returns all available versions in ascending order
-    public var availableVersions: [Int64] {
-        versions.keys.sorted()
-    }
-
-    // Hash returns the hash of the latest saved version of the tree, as returned
-    // by SaveVersion. If no versions have been saved, Hash returns nil.
+    /// `hash` returns the hash of the latest saved version of the tree, as returned
+    /// by saveVersion. If no versions have been saved, Hash returns nil.
     public var hash: Hash? {
-        if version > 0 {
-            return lastSaved.root.hash
-        }
-        return nil
+        lastSaved.root.hash
     }
 
-    // WorkingHash returns the hash of the current working tree.
+    /// `workingHash` returns the hash of the current working tree.
     public var workingHash: Hash {
         current.root.hash
     }
 
     public var description: String {
-        // TODO: implement
-        ""
+        "MutableTree: \(ndb)"
     }
 
-    // Set sets a key in the working tree. Nil values are not supported.
+    /// `set` sets a key in the working tree. Nil values are not supported.
     @discardableResult
     public mutating func set(key: Key, value: Value) throws -> Bool {
-        var o: [Storage.Node] = []
-
-        let (newRoot, updated) = try ndb.recursiveSet(current.root, key, value, version + 1, orphans: &o)
-        // self.ndb.root = newRoot
-        current = (newRoot, version)
-        return updated
+        return try ndb.set(key: key, value: value)
     }
 
-    // Remove removes a key from the working tree.
+    /// `remove` removes a key from the working tree.
     @discardableResult
     public mutating func remove(key: Key) -> (Value?, Bool) {
-        var o: [Storage.Node] = []
-        let (newRoot, _, value) = ndb.recursiveRemove(node: current.root, key: key, version: version + 1, orphans: &o)
-        if let newRoot = newRoot, o.count > 0 { // newRoot != nil
-            // self.ndb.root = newRoot
-            current = (newRoot, version)
-            return (value, true)
-        }
-        return (nil, false)
-    }
-
-    // LazyLoadVersion attempts to lazy load only the specified target version
-    // without loading previous roots/versions. Lazy loading should be used in cases
-    // where only reads are expected. Any writes to a lazy loaded tree may result in
-    // unexpected behavior. If the targetVersion is non-positive, the latest version
-    // will be loaded by default. If the latest version is non-positive, this method
-    // performs a no-op. Otherwise, if the root does not exist, an error will be
-    // returned.
-    public func lazyLoadVersion(_: Int64) throws -> Int64 {
-        // TODO: implement
-//        latestVersion := tree.ndb.getLatestVersion()
-//        if latestVersion < targetVersion {
-//            return latestVersion, fmt.Errorf("wanted to load target %d but only found up to %d", targetVersion, latestVersion)
-//        }
-//
-//        // no versions have been saved if the latest version is non-positive
-//        if latestVersion <= 0 {
-//            return 0, nil
-//        }
-//
-//        // default to the latest version if the targeted version is non-positive
-//        if targetVersion <= 0 {
-//            targetVersion = latestVersion
-//        }
-//
-//        rootHash, err := tree.ndb.getRoot(targetVersion)
-//        if err != nil {
-//            return 0, err
-//        }
-//        if rootHash == nil {
-//            return latestVersion, ErrVersionDoesNotExist
-//        }
-//
-//        tree.versions[targetVersion] = true
-//
-//        iTree := &ImmutableTree{
-//            ndb:     tree.ndb,
-//            version: targetVersion,
-//            root:    tree.ndb.GetNode(rootHash),
-//        }
-//
-//        tree.orphans = map[string]int64{}
-//        tree.ImmutableTree = iTree
-//        tree.lastSaved = iTree.clone()
-//
-//        return targetVersion, nil
-        return 0
-    }
-
-    // Load the versioned tree from disk. If version is 0, will return latest version.
-    // Returns the version number of the latest version found
-    public func load(version _: Int64 = 0) throws -> Int64 {
-        // TODO: could this be replaced by init() ?
-        // TODO: implement
-//        let roots = try self.ndb.getRoots()
-//
-//        guard roots.count > 0 else {
-//            return 0
-//        }
-//
-//        var latestVersion = Int64(0)
-//        let (root, latestVersion) = roots.filter {
-//
-//        }
-//        roots, err := tree.ndb.getRoots()
-//        if err != nil {
-//            return 0, err
-//        }
-//
-//        if len(roots) == 0 {
-//            return 0, nil
-//        }
-//
-//        latestVersion := int64(0)
-//
-//        var latestRoot []byte
-//        for version, r := range roots {
-//            tree.versions[version] = true
-//            if version > latestVersion && (targetVersion == 0 || version <= targetVersion) {
-//                latestVersion = version
-//                latestRoot = r
-//            }
-//        }
-//
-//        if !(targetVersion == 0 || latestVersion == targetVersion) {
-//            return latestVersion, fmt.Errorf("wanted to load target %v but only found up to %v",
-//                targetVersion, latestVersion)
-//        }
-//
-//        t := &ImmutableTree{
-//            ndb:     tree.ndb,
-//            version: latestVersion,
-//        }
-//
-//        if len(latestRoot) != 0 {
-//            t.root = tree.ndb.GetNode(latestRoot)
-//        }
-//
-//        tree.orphans = map[string]int64{}
-//        tree.ImmutableTree = t
-//        tree.lastSaved = t.clone()
-//
-//        return latestVersion, nil
-        return 0
-    }
-
-    // LoadVersionOverwrite returns the version number of targetVersion.
-    // Higher versions' data will be deleted.
-    public mutating func loadVersionForOverwriting(_ targetVersion: Int64) throws -> Int64 {
-        guard let latestVersion = try? load(version: targetVersion) else {
-            return 0 // TODO: propagate errors up?
-        }
-        if latestVersion != targetVersion {
-            return latestVersion
-        }
-        if let _ = try? deleteAll(from: targetVersion + 1) {
-            return targetVersion
-        }
-        return 0
-    }
-
-    public func getImmutable(_ version: Int64) throws -> ImmutableTree<Storage> {
-        guard let root = try ndb.root(at: version) else {
-            throw IAVLErrors.generic(identifier: "MutableTree().getImmutable()", reason: "version doesn't exist")
-        }
-
-        // return ImmutableTree<Storage>(root, version)
-        return try ImmutableTree<Storage>(ndb, version)
+        return ndb.remove(key: key)
     }
 
     // Rollback resets the working tree to the latest saved version, discarding
     // any unsaved modifications.
     public mutating func rollback() {
-        if version > 0 {
-            current = lastSaved
-        } else { // empty tree
-            current = (ndb.makeEmpty(), 0)
-        }
-        // ndb.orphans = [:]
+        ndb.rollback()
     }
 
     // GetVersioned gets the value at the specified key and version.
     public func getVersioned(_ key: Key, _ version: Int64) throws -> (index: Int64, value: Value?) {
-        if let _ = versions[version] {
-            let t = try getImmutable(version)
-            return t.get(key)
+        if let root = try? ndb.root(at: version) {
+            return root.get(key)
         }
         return (-1, nil)
     }
@@ -291,50 +114,45 @@ public struct MutableTree<Storage: NodeStorageProtocol>: CustomStringConvertible
     // If version is snapshot version, persist version to disk as well
     public func saveVersion() throws -> (Hash, Int64) {
         // TODO: implement
-
+        try ndb.commit()
         return (current.root.hash, version)
     }
 
     // DeleteVersion deletes a tree version from disk. The version can then no
     // longer be accessed.
-    public mutating func delete(_ version: Int64) throws {
-        guard version > 0 else {
-            throw IAVLErrors.generic(identifier: "MutableTree().deleteAll(from:)", reason: "version must be greater than 0")
-        }
-        if version == current.version {
-            throw IAVLErrors.generic(identifier: "MutableTree().deleteAll(from:)", reason: "cannot delete latest saved version \(version)")
-        }
-        guard let _ = versions[version] else {
-            throw IAVLErrors.generic(identifier: "MutableTree().deleteAll(from:)", reason: "version doesn't exist")
-        }
-
+    public mutating func deleteLast() throws {
         try ndb.deleteLast()
-
-        try ndb.commit()
-
-        versions[version] = nil
     }
 
     // deleteVersionsFrom deletes tree version from disk specified version to latest version. The version can then no
     // longer be accessed.
     private mutating func deleteAll(from version: Int64) throws {
-        guard version > 0 else {
-            throw IAVLErrors.generic(identifier: "MutableTree().deleteAll(from:)", reason: "version must be greater than 0")
-        }
-        let newLatestVersion = version - 1
-        let lastestVersion = ndb.version
-        for v in version ... lastestVersion {
-            if v == current.version {
-                throw IAVLErrors.generic(identifier: "MutableTree().deleteAll(from:)", reason: "cannot delete latest saved version \(v)")
-            }
-            // try self.ndb.delete(version: v)
-            try ndb.deleteLast()
+        try ndb.deleteAll(from: version)
+    }
+}
 
-            versions[v] = nil
+public extension MutableTree {
+    // GetVersionedWithProof gets the value under the key at the specified version
+    // if it exists, or returns nil.
+    func getVersionedWithProof(_ key: Storage.Key, _ version: Int64) throws -> (Storage.Value?, RangeProof<Storage.Node>) {
+        guard let root = try? ndb.root(at: version) else {
+            throw IAVLErrors.generic(identifier: "MutableTree().getVersionedRangeWithProof", reason: "Version doesn't exist")
         }
-        try ndb.commit()
+        return try root.getWithProof(key)
+    }
 
-        ndb.version = newLatestVersion
+    // GetVersionedRangeWithProof gets key/value pairs within the specified range
+    // and limit.
+    // swiftlint:disable large_tuple
+    func getVersionedRangeWithProof(_ start: Storage.Key, _ end: Storage.Key, _ limit: UInt, _ version: Int64) throws -> (
+        keys: [Key], values: [Storage.Value], proof: RangeProof<Storage.Node>
+    ) {
+        guard let root = try? ndb.root(at: version) else {
+            throw IAVLErrors.generic(identifier: "MutableTree().getVersionedRangeWithProof", reason: "Version doesn't exist")
+        }
+
+        let (k, v, p) = try root.getRangeWithProof(start, end, limit)
+        return (k, v, p)
     }
 }
 

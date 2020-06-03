@@ -2,7 +2,7 @@
 //
 //  This source file is part of the CosmosSwift open source project.
 //
-//  ImmutableTree.swift last updated 02/06/2020
+//  ImmutableTree.swift last updated 03/06/2020
 //
 //  Copyright © 2020 Katalysis B.V. and the CosmosSwift project authors.
 //  Licensed under Apache License v2.0
@@ -15,10 +15,17 @@
 // ===----------------------------------------------------------------------===
 
 import Foundation
+import iAVLPlusCore
 
-// ImmutableTree is a container for an immutable AVL+ ImmutableTree. Changes are performed by
-// swapping the internal root with a new one, while the container is mutable.
-// Note that this tree is not thread-safe.
+/// The `ImmutableTree` implementation aims to mimic the equivalent Go `ImmutableTree`.
+/// However, the design we implement ere is such that we have encapsulated the storage and access
+/// to the nodes into the `NodeStorageProtocol`. Therefore, any loading, saving, deleting, managing of
+/// cache, memory and such is expected to be handled and delegated to the storage implementation itself.
+/// We are providing this struct because as part of the design process, it was implemented before eventually
+/// being carved out in favour of the `NodeStorageProtocol` and the `NodeProtocol`. As it may be
+/// useful as part of the coming development of future CosmosSwift milestones, we keep it as suc for now, albeit
+/// as part of the Legacy module.
+/// This tree is not thread safe.
 public struct ImmutableTree<Storage: NodeStorageProtocol>: CustomStringConvertible {
     public typealias Hash = Storage.Hasher.Hash
     public typealias Node = Storage.Node
@@ -27,9 +34,13 @@ public struct ImmutableTree<Storage: NodeStorageProtocol>: CustomStringConvertib
 
     let ndb: Storage
 
-    public var root: Node
+    public var root: Node {
+        ndb.root
+    }
 
-    public var version: Int64
+    public var version: Int64 {
+        ndb.version
+    }
 
     public var size: Int64 {
         root.size
@@ -45,8 +56,7 @@ public struct ImmutableTree<Storage: NodeStorageProtocol>: CustomStringConvertib
     }
 
     public var description: String {
-        // TODO: implement
-        ""
+        "ImmutableTree: \(ndb)"
     }
 
     // return the next key in the tree, nil if this is there is no greater key in the tree
@@ -54,57 +64,17 @@ public struct ImmutableTree<Storage: NodeStorageProtocol>: CustomStringConvertib
         return root.next(key: key)
     }
 
-    /*
-     // hashWithCount returns the root hash and hash count.
-     mutating public func hashWithCount() -> (Hash, Int64) {
-         root.hashWithCount()
-     }
-     */
-
-    public init(_ storage: Storage, _ version: Int64) throws {
-        self.version = version
-        root = try storage.root(at: version) ?? storage.makeEmpty()
+    /// We implement here a simple initializer taking a storage instance. The specific
+    /// strategies around caching, pruning, managing memory and speed of access are
+    /// intended to be implemented by the type of storage provided dependin on the specific
+    /// use case.
+    public init(_ storage: Storage) throws {
         ndb = storage
-    }
-
-//    // Creates an in-memory instances
-//    public init(_ root: Node, _ version: Int64 = 0) {
-//        self.root = root
-//        self.version = version
-//        self.ndb = Storage(root, version)
-//    }
-//
-//    // Creates both in-memory and persistent instances. Default behavior snapshots every version
-//    public init(_ db: DB, _ cacheSize: Int) {
-//        // TODO: implement
-//        self.init(Node(key: Key(), value: Value(), version: 0))
-//    }
-//
-//    // Creates ImmutableTree with specified pruning/writing strategy.
-//    // Persists every `keepEvery` version to snapDB and saves last `keepRecent` versions to recentDB
-//    public init(_ snapshotDB: DB, _ recentDB: DB, _ cacheSize: Int, _ options: [String:String]) {
-//        // TODO: implement
-//        self.init(Node(key: Key(), value: Value(), version: 0))
-//    }
-
-    // Clone creates a clone of the tree.
-    // Used internally by MutableTree.
-    public init(_ it: ImmutableTree) {
-        root = it.root
-        version = it.version
-        ndb = it.ndb
     }
 
     // Has returns whether or not a key exists.
     public func has(_ key: Key) -> Bool {
         root.has(key)
-    }
-
-    public func clone(_ version: Int64) throws -> ImmutableTree<Storage> {
-        // This is needed because the it holds a class.
-        // maybe we should look at implementing COW
-        // let db = try self.ndb.clone(version)
-        return try ImmutableTree<Storage>(ndb, version)
     }
 
     // Get returns the index and value of the specified key if it exists, or nil
@@ -121,32 +91,37 @@ public struct ImmutableTree<Storage: NodeStorageProtocol>: CustomStringConvertib
     // Iterate iterates over all keys of the tree, in order.
     // Returns true if callback returns true, false otherwise
     public func iterate(_ calling: (Key, Value) -> Bool) -> Bool {
-        return root.traverse(true) { node in
-            if let value = node.value {
-                return calling(node.key, value)
-            }
-            return false
-        }
+        return root.iterate(calling)
     }
 
     // IterateRange makes a callback for all nodes with key between start and end non-inclusive.
     // If either are nil, then it is open on that side (nil, nil is the same as Iterate)
     public func iterateRange(_ start: Key, _ end: Key, _ ascending: Bool, _ calling: (Key, Value, Int64) -> Bool) -> Bool {
-        return root.traverseInRange(from: start, to: end, ascending: ascending, inclusive: true, depth: 0) { node, _ in
-            if let value = node.value {
-                return calling(node.key, value, node.version)
-            }
-            return false
-        }
+        return root.iterateRange(start, end, ascending, calling)
     }
 
     public func nodeSize() -> Int {
-        var size = 0
-        _ = root.traverse(true) { _ in
-            size += 1
-            return false
-        }
-        return size
+        return Int(root.size)
+    }
+}
+
+extension ImmutableTree {
+    // GetRangeWithProof gets key/value pairs within the specified range and limit.
+    // keyStart is inclusive and keyEnd is exclusive.
+    // If keyStart or keyEnd don't exist, the leaf before keyStart
+    // or after keyEnd will also be included, but not be included in values.
+    // If keyEnd-1 exists, no later leaves will be included.
+    // If keyStart >= keyEnd and both not nil, panics.
+    // Limit is never exceeded.
+    // swiftlint:disable large_tuple
+    public func getRangeWithProof(_ start: Storage.Key?, _ end: Storage.Key?, _ limit: UInt) throws -> (keys: [Storage.Key], value: [Storage.Value], proof: RangeProof<Storage.Node>) {
+        return try root.getRangeWithProof(start, end, limit)
+    }
+
+    // GetWithProof gets the value under the key if it exists, or returns nil.
+    // A proof of existence or absence is returned alongside the value.
+    public func getWithProof(_ key: Storage.Key) throws -> (value: Storage.Value?, proof: RangeProof<Storage.Node>) {
+        return try root.getWithProof(key)
     }
 }
 

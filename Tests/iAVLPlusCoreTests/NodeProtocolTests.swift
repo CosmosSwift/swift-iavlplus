@@ -15,7 +15,8 @@
 // ===----------------------------------------------------------------------===
 
 import Foundation
-@testable import iAVLPlus
+@testable import iAVLPlusCore
+import InMemoryNodeDB
 import XCTest
 
 class NodeProtocolTests: XCTestCase {
