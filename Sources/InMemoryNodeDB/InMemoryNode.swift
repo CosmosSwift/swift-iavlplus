@@ -2,7 +2,7 @@
 //
 //  This source file is part of the CosmosSwift open source project.
 //
-//  InMemoryNode.swift last updated 02/06/2020
+//  InMemoryNode.swift last updated 03/06/2020
 //
 //  Copyright © 2020 Katalysis B.V. and the CosmosSwift project authors.
 //  Licensed under Apache License v2.0
@@ -15,6 +15,7 @@
 // ===----------------------------------------------------------------------===
 
 import Foundation
+import iAVLPlusCore
 
 // TODO: Inner Nodes currently keep the whole structure of below them
 // this means that when the tree is big, it needs to fit fully in memory.

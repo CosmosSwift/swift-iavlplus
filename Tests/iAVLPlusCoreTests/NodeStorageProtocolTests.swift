@@ -14,7 +14,8 @@
 //
 // ===----------------------------------------------------------------------===
 
-import iAVLPlus
+import iAVLPlusCore
+import InMemoryNodeDB
 import XCTest
 
 class NodeStorageProtocolTests: XCTestCase {

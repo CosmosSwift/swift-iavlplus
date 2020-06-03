@@ -125,7 +125,7 @@ extension NodeProtocol {
     // Iterate iterates over all keys of the tree, in order.
     // Returns true if callback returns true, false otherwise
     @discardableResult
-    public func iterate(_ ascending: Bool = true, _ calling: (_ key: Key, _ value: Value) -> Bool) -> Bool {
+    public func iterate(_ calling: (_ key: Key, _ value: Value) -> Bool, _ ascending: Bool = true) -> Bool {
         return traverse(ascending) { node in
             if let value = node.value {
                 return calling(node.key, value)

@@ -15,7 +15,7 @@
 // ===----------------------------------------------------------------------===
 
 import Foundation
-@testable import iAVLPlus
+@testable import iAVLPlusCore
 @testable import SQLiteNodeDB
 import XCTest
 

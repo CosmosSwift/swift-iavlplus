@@ -14,7 +14,7 @@
 //
 // ===----------------------------------------------------------------------===
 
-import iAVLPlus
+import iAVLPlusLegacy
 import XCTest
 
 class KeyPathTest: XCTestCase {
