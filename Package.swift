@@ -15,13 +15,11 @@ let package = Package(
         // Products define the executables and libraries produced by a package, and make them visible to other packages.
         .library(name: "iAVLPlus", targets: ["iAVLPlusCore", "iAVLPlusLegacy"]),
         .library(name: "InMemoryNodeDB", targets: ["InMemoryNodeDB"]),
-        .library(name: "SQLiteNodeDB", targets: ["SQLiteNodeDB"]),
 //        .library(name: "FlatBufferNodeDB", targets: ["FlatBufferNodeDB"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         .package(url: "https://github.com/cosmosswift/swift-mint.git", from: "0.3.0"),
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "4.0.0"),
         // .package(url: "ObjectBox", from: "1.0.0"),
     ],
     targets: [
@@ -30,11 +28,9 @@ let package = Package(
         .target(name: "iAVLPlusCore", dependencies: ["Merkle"]),
         .target(name: "iAVLPlusLegacy", dependencies: ["iAVLPlusCore"]),
         .target(name: "InMemoryNodeDB", dependencies: ["iAVLPlusCore"]),
-        .target(name: "SQLiteNodeDB", dependencies: ["iAVLPlusCore", "GRDB"]),
 //        .target(name: "FlatBufferNodeDB", dependencies: ["iAVLPlusCore", "GRDB"]),
         .testTarget(name: "iAVLPlusCoreTests", dependencies: ["iAVLPlusCore", "InMemoryNodeDB"]),
         .testTarget(name: "iAVLPlusLegacyTests", dependencies: ["iAVLPlusCore", "iAVLPlusLegacy"]),
-        .testTarget(name: "SQLiteNodeDBTests", dependencies: ["iAVLPlusCore", "SQLiteNodeDB"]),
 //        .testTarget(name: "FlatBufferNodeDBTests", dependencies: ["iAVLPlusCore", "FlatBufferNodeDB"]),
     ]
 )
