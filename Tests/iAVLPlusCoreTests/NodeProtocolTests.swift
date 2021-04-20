@@ -258,11 +258,15 @@ class NodeProtocolTests: XCTestCase {
             return i + 1
         }
         var res: [UInt8] = []
-        _ = tree.root.iterate(false) { (k, v) -> Bool in
-            print("{\(k.hex), \(v.hex)}")
-            res.append(k[0])
-            return false
-        }
+        
+        _ = tree.root.iterate(
+            { (k, v) -> Bool in
+                print("{\(k.hex), \(v.hex)}")
+                res.append(k[0])
+                return false
+            },
+            false
+        )
 
         XCTAssertEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].reversed(), res)
     }
@@ -448,7 +452,7 @@ class NodeProtocolTests: XCTestCase {
         print("\(p.leaves[0].key.hex)")
         XCTAssertTrue(p.treeEnd)
 
-        p.verify(tree.root.hash)
+        XCTAssertTrue(p.verify(tree.root.hash))
         XCTAssertThrowsError(try p.verifyItem(tree.root.hash, Data([10]), Data([10])))
         XCTAssertNoThrow(try p.verifyAbsence(tree.root.hash, Data([10])))
         // TODO: also try to verify on multiple different versions of the root

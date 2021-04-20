@@ -48,5 +48,5 @@ public struct AbsenceOp<Node: NodeProtocol>: ProofOperatorProtocol, Codable {
         return [Data(rootHash)]
     }
 
-    public let type: String = "AbsenceOp"
+    public var type: String { "AbsenceOp" }
 }

@@ -49,7 +49,7 @@ class NodeStorageProtocolTests: XCTestCase {
             try tree.set(key: Data([$0]), value: Data([$0]))
         }
         try tree.commit()
-        print("\(try tree.root(at: 0))")
+        print("\(String(describing: try tree.root(at: 0)))")
         XCTAssertEqual(tree.versions.sorted(), [0, 1, 2])
         XCTAssertEqual(tree.version, 2)
     }
@@ -65,7 +65,7 @@ class NodeStorageProtocolTests: XCTestCase {
             try tree.set(key: Data([$0]), value: Data([$0]))
         }
         try tree.commit()
-        print("\(try tree.root(at: 0))")
+        print("\(String(describing: try tree.root(at: 0)))")
         XCTAssertEqual(tree.versions.sorted(), [0, 1, 2])
         _ = try [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map {
             try tree.set(key: Data([$0]), value: Data([$0]))
@@ -92,7 +92,7 @@ class NodeStorageProtocolTests: XCTestCase {
             try tree.set(key: Data([$0]), value: Data([$0]))
         }
         try tree.commit()
-        print("\(try tree.root(at: 0))")
+        print("\(String(describing: try tree.root(at: 0)))")
         XCTAssertEqual(tree.versions.sorted(), [0, 1, 2])
         _ = try [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map {
             try tree.set(key: Data([$0]), value: Data([$0]))
